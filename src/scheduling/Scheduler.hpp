@@ -11,50 +11,57 @@
 #include <thread>
 #include <vector>
 
-namespace chored {
+namespace chored
+{
+class Scheduler
+{
+public:
+  explicit Scheduler(std::vector<TaskConfig> tasks);
 
-    class Scheduler {
-    public:
-        explicit Scheduler(std::vector<TaskConfig> tasks);
-        ~Scheduler();
+  ~Scheduler();
 
-        Scheduler(const Scheduler&) = delete;
-        Scheduler& operator=(const Scheduler&) = delete;
+  Scheduler(const Scheduler &) = delete;
 
-        void start();        // Starts scheduler and worker; returns immediately.
-        void requestStop();  // Requests shutdown and wakes both threads.
-        void join();         // Waits for both threads to finish.
+  Scheduler &operator=(const Scheduler &) = delete;
 
-    private:
-        using Clock = std::chrono::system_clock;
+  std::optional<ActiveTask> activeTask() const
+  {
+    return runner_.activeTask();
+  }
 
-        struct ScheduledTask {
-            TaskConfig task;
-            Clock::time_point nextRun;
-        };
+  void start();       // Starts scheduler and worker; returns immediately.
+  void requestStop(); // Requests shutdown and wakes both threads.
+  void join();        // Waits for both threads to finish.
 
-        void schedulerLoop();
-        void workerLoop();
+private:
+  using Clock = std::chrono::system_clock;
 
-        Clock::time_point calculateNextRun(
-            const TaskConfig& task,
-            Clock::time_point now) const;
+  struct ScheduledTask
+  {
+    TaskConfig task;
+    Clock::time_point nextRun;
+  };
 
-        std::vector<ScheduledTask> tasks_;
-        std::queue<TaskConfig> readyTasks_;
-        TaskRunner runner_;
+  void schedulerLoop();
 
-        std::thread schedulerThread_;
-        std::thread workerThread_;
+  void workerLoop();
 
-        std::mutex mutex_;
-        std::condition_variable scheduleChanged_;
-        std::condition_variable workAvailable_;
+  Clock::time_point calculateNextRun(const TaskConfig &task, Clock::time_point now) const;
 
-        bool started_{false}; // Protected by mutex_.
-        std::set<std::string> pendingTasks_; // Queued or running task names.
+  std::vector<ScheduledTask> tasks_;
+  std::queue<TaskConfig> readyTasks_;
+  TaskRunner runner_;
 
-        bool stopRequested_{false}; // Protected by mutex_.
-    };
+  std::thread schedulerThread_;
+  std::thread workerThread_;
 
+  std::mutex mutex_;
+  std::condition_variable scheduleChanged_;
+  std::condition_variable workAvailable_;
+
+  bool started_{false};                // Protected by mutex_.
+  std::set<std::string> pendingTasks_; // Queued or running task names.
+
+  bool stopRequested_{false}; // Protected by mutex_.
+};
 } // namespace chored

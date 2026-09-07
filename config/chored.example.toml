@@ -1,0 +1,3 @@
+[tasks.example]
+command = "echo Hello from chored"
+at = "22:00"

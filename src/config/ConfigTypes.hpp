@@ -4,16 +4,17 @@
 #include <string>
 #include <vector>
 
-namespace chored {
+namespace chored
+{
+struct TaskConfig
+{
+  std::string name;
+  std::string command;
+  std::optional<std::string> at;
+};
 
-    struct TaskConfig {
-        std::string name;
-        std::string command;
-        std::optional<std::string> at;
-    };
-
-    struct AppConfig {
-        std::vector<TaskConfig> tasks;
-    };
-
+struct AppConfig
+{
+  std::vector<TaskConfig> tasks;
+};
 } // namespace chored

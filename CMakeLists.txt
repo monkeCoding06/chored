@@ -14,12 +14,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
-# Logger uses std::mutex even though the prototype has no scheduler threads.
+# Scheduler, task state, and control server use threads and mutexes.
 find_package(Threads REQUIRED)
 
-# Parsing prototype only. Add Application and SignalHandler when implementing
-# the long-running service. Config.cpp must be migrated from XML to TOML.
+# Linux daemon and control client.
 add_executable(chored
+        src/control/ControlServer.cpp
         src/main.cpp
         src/config/Config.cpp
         src/logging/Logger.cpp
@@ -42,8 +42,39 @@ target_link_libraries(chored PRIVATE
         Threads::Threads
 )
 
-if(MSVC)
+if (MSVC)
     target_compile_options(chored PRIVATE /W4 /permissive-)
-else()
+else ()
     target_compile_options(chored PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+endif ()
+
+include(GNUInstallDirs)
+
+set(CHORED_SERVICE_USER "" CACHE STRING
+        "Existing Linux user that executes chored tasks")
+
+if (CHORED_SERVICE_USER STREQUAL "")
+    message(FATAL_ERROR
+            "Set -DCHORED_SERVICE_USER=<your Linux username>")
+endif ()
+
+set(CHORED_SYSTEMD_UNIT_DIR "lib/systemd/system" CACHE STRING
+        "Installation directory for the systemd system unit")
+
+configure_file(
+        packaging/systemd/chored.service.in
+        chored.service
+        @ONLY
+)
+
+install(TARGETS chored
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/chored.service"
+        DESTINATION "${CHORED_SYSTEMD_UNIT_DIR}"
+)
+
+install(FILES config/chored.example.toml
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/chored
+)

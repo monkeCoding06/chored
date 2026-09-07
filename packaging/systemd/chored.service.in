@@ -1,0 +1,20 @@
+[Unit]
+Description=Chored task scheduler
+After=network.target
+
+[Service]
+Type=simple
+User=@CHORED_SERVICE_USER@
+ExecStart="@CMAKE_INSTALL_FULL_BINDIR@/chored" --daemon --config /etc/chored/chored.toml --socket /run/chored/control.sock
+WorkingDirectory=~
+RuntimeDirectory=chored
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+Restart=on-failure
+RestartSec=3s
+KillMode=control-group
+TimeoutStopSec=15s
+StandardInput=null
+
+[Install]
+WantedBy=multi-user.target

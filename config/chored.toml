@@ -2,6 +2,6 @@
 command = "ls"
 at = "22:00"
 
-[tasks.cleanup]
-command = "echo cleanup"
-at = "13:11"
+[tasks.long_test]
+command = "echo 'Starting'; sleep 120; echo 'Finished'"
+at = "15:58"
