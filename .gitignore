@@ -9,3 +9,4 @@
 !/packaging/**
 !/src/**
 !/.github/**
+!.clang-format
