@@ -1,0 +1,12 @@
+*
+
+!*/
+
+!/.gitignore
+!/CMakeLists.txt
+!/README.md
+!/config/**
+!/packaging/**
+!/src/**
+!/.github/**
+!/branding/**

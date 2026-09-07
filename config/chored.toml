@@ -1,0 +1,7 @@
+[tasks.ls]
+command = "ls"
+at = "22:00"
+
+[tasks.cleanup]
+command = "echo cleanup"
+at = "12:30"
