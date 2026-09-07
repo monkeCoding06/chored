@@ -9,6 +9,7 @@
 #include <string>
 
 #include "execution/TaskRunner.hpp"
+#include "scheduling/Scheduler.hpp"
 
 namespace
 {
@@ -60,41 +61,34 @@ namespace
     }
 } // namespace
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     try
     {
         const Arguments arguments = parseArguments(argc, argv);
         const chored::Config config =
-                chored::Config::load(arguments.configPath);
+            chored::Config::load(arguments.configPath);
 
-        chored::TaskRunner runner;
-        bool anyFailed = false;
+        // Block signals before creating threads so they inherit the mask.
+        chored::SignalHandler signalHandler;
 
-        for (const auto &task: config.values().tasks)
-        {
-            std::cout << "Task: " << task.name << '\n'
-                    << "  Command: " << task.command << '\n'
-                    << "  At: " << task.at.value_or("manual") << '\n'
-                    << std::flush;
+        chored::Scheduler scheduler(config.values().tasks);
+        scheduler.start();
 
-            const auto result = runner.run(task);
+        CHORED_LOG_INFO("Scheduler started");
 
-            if (result.terminationSignal != 0)
-            {
-                CHORED_LOG_ERROR(
-                    "Task ", task.name,
-                    " terminated by signal ", result.terminationSignal);
-                anyFailed = true;
-            } else
-            {
-                std::cout << "  Exit code: " << result.exitCode << '\n';
-                anyFailed |= result.exitCode != 0;
-            }
-        }
+        // Sleeps until SIGINT or SIGTERM arrives.
+        const int signal = signalHandler.wait();
 
-        return anyFailed ? 1 : 0;
-    } catch (const std::exception &e)
+        CHORED_LOG_INFO("Received signal ", signal, ", stopping");
+
+        scheduler.requestStop();
+        scheduler.join();
+
+        CHORED_LOG_INFO("Scheduler stopped");
+        return 0;
+    }
+    catch (const std::exception& e)
     {
         CHORED_LOG_ERROR(e.what());
         return 1;
