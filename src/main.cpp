@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "config/Config.hpp"
 #include "execution/TaskRunner.hpp"
 #include "scheduling/Scheduler.hpp"
 
@@ -66,8 +67,7 @@ int main(int argc, char** argv)
     try
     {
         const Arguments arguments = parseArguments(argc, argv);
-        const chored::Config config =
-            chored::Config::load(arguments.configPath);
+        const chored::Config config = chored::Config::load(arguments.configPath);
 
         // Block signals before creating threads so they inherit the mask.
         chored::SignalHandler signalHandler;
