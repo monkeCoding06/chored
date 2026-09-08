@@ -1,8 +1,8 @@
 # chored
 
 A Linux background task runner configured with TOML. Daily scheduled tasks run
-on one worker thread. A local control socket lets another invocation list the
-currently running task without loading configuration or starting a scheduler.
+on a configurable worker pool. A local control socket lets another invocation list the
+currently running tasks without loading configuration or starting a scheduler.
 
 ## Build
 
@@ -15,17 +15,39 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
 cmake --build build -j
 ```
 
-## Run directly
+## Everyday commands
+
+After installing and starting the system service, run these as its configured user:
 
 ```sh
-./build/chored --daemon --config config/chored.toml
+chored --list
+chored --list-active
+chored --run backup
+chored --kill-all
 ```
 
-In another terminal, as the same user:
+`--list` shows configured tasks and their next run times, including manual-only
+tasks. `--list-active` shows jobs currently executing. `--run TASK` queues one
+configured task immediately. `--kill-all` cancels current work and clears the queue.
+
+## Run a separate development instance
+
+The normal default is `/run/chored/control.sock`. For development without a
+system service, choose a writable private path and explicitly use it in both terminals:
 
 ```sh
-./build/chored --list-active
+./build/chored --daemon --config config/chored.toml --socket "$HOME/chored-dev/control.sock"
 ```
+
+In another terminal:
+
+```sh
+./build/chored --list-active --socket "$HOME/chored-dev/control.sock"
+```
+
+The daemon creates `$HOME/chored-dev` with mode 0700 if it does not exist.
+This custom socket is only needed for a separate instance. Avoid using the same
+task configuration in two daemons unless you intend both to execute it.
 
 Example output (PID is the shell/process-group leader):
 
@@ -37,16 +59,18 @@ TASK           PID     RUNNING FOR
 When nothing is running, the client prints `No active tasks.` and exits zero.
 A missing daemon or failed request exits nonzero with an error. Task names are
 quoted, control characters are replaced, and long names are truncated for display.
-Only running tasks are shown; queued tasks are excluded. The runner currently
-executes at most one task at a time. The snapshot may change immediately after
+Only running tasks are shown; queued tasks are excluded. The worker limit is configured using
+`[scheduler].max_concurrent_tasks` (1–64, default 1). The snapshot may change immediately after
 it is read.
 
-For direct runs, the default socket is `$XDG_RUNTIME_DIR/chored/control.sock`, falling back to
-`/run/user/<uid>/chored/control.sock`. If your session has no runtime directory,
-choose an absolute `--socket` path under an existing parent directory; its immediate
-containing directory is created with mode 0700. Pass the same path to both commands.
-Existing control directories must be owned by you and private (0700).
-The socket is mode 0600 and both peers verify the other process's UID.
+The default socket for the daemon and all client commands is
+`/run/chored/control.sock`. No `--socket` argument is needed for the installed
+system service. The socket is mode 0600 and both peers verify the other
+process's UID, so run client commands as the configured service account.
+
+`--socket PATH` remains available for a separate development instance. Its
+containing directory must be owned by you and private (0700). Do not launch
+a second daemon on the system service's socket.
 
 One daemon may own a socket at a time. A persistent `.lock` file prevents races;
 it is intentionally not deleted on exit. Stale socket files from crashes are
@@ -97,13 +121,13 @@ The enabled system service starts at boot without requiring a user login.
 Query active tasks **as the configured service user**:
 
 ```sh
-chored --list-active --socket /run/chored/control.sock
+chored --list-active
 ```
 
 For a different service account, use:
 
 ```sh
-sudo -u SERVICE_USER /usr/local/bin/chored --list-active --socket /run/chored/control.sock
+sudo -u SERVICE_USER /usr/local/bin/chored --list-active
 ```
 
 Replace `SERVICE_USER` with the account selected at configure time. The current
@@ -136,6 +160,9 @@ file if you no longer need it.
 ## Configuration
 
 ```toml
+[scheduler]
+max_concurrent_tasks = 4
+
 [tasks.backup]
 command = "restic backup ~/Documents"
 at = "22:00"
@@ -178,12 +205,12 @@ References: [Unix sockets](https://man7.org/linux/man-pages/man7/unix.7.html),
 ## Cancel current work
 
 ```sh
-chored --kill-all --socket /run/chored/control.sock
+chored --kill-all
 ```
 
-Run this as the configured service account, as with `--list-active`. Direct
-instances use their default user socket unless `--socket` overrides it.
-`--kill-all`, `--daemon`, and `--list-active` are mutually exclusive.
+Run this as the configured service account, as with `--list-active`. The default is
+`/run/chored/control.sock`; `--socket` optionally overrides it.
+`--kill-all`, `--daemon`, `--list`, `--list-active`, and `--run` are mutually exclusive.
 
 The daemon immediately acknowledges: `Cancellation requested; queued tasks cleared.`
 Running task process groups receive SIGTERM, then SIGKILL after a five-second
@@ -221,3 +248,54 @@ unreaped-child behavior used during cancellation.
 Validation for `--kill-all`: CMake build, runner cancellation tests, and scheduler
 queue/concurrency tests passed. Unix socket communication remains unverified in
 the authoring environment because AF_UNIX creation is prohibited.
+
+## Run a task immediately
+
+```sh
+chored --run backup
+```
+
+Run the client as the configured service account. It uses the existing daemon's
+loaded configuration; it does not start another scheduler or read `--config`.
+The response `Task queued.` means the request was accepted, not that the command
+finished successfully. Check `--list-active` and the daemon logs for execution.
+
+Manual requests use the normal FIFO queue and concurrency limit. Unknown names,
+queued/running names, and requests during shutdown return a nonzero exit status
+with an explanation. Manual execution leaves the next scheduled run unchanged.
+If a scheduled occurrence becomes due while that task is already pending, the
+existing no-overlap behavior skips that occurrence. `--kill-all` cancels manual
+jobs and clears manual queued entries too.
+
+Tasks without `at` are retained, shown as `manual` by `--list`, and can be queued:
+
+```toml
+[tasks.hello]
+command = "echo Hello from a manual task"
+```
+
+```sh
+chored --run hello
+```
+
+Quote task names containing spaces. Names beginning with `--` can be passed as
+`--run=--name`. Only one action may be requested per invocation: `--daemon`,
+`--list`, `--list-active`, `--kill-all`, or `--run`. The run request carries the
+exact name (up to 65532 bytes); it never interprets that name as shell code.
+
+Verification:
+
+```sh
+cmake -S . -B build -DCHORED_SERVICE_USER="$(id -un)" -DCHORED_BUILD_TESTS=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+python3 tests/manual_control.py ./build/chored
+```
+
+The scheduler test covers manual-only tasks, simultaneous duplicate requests,
+queue limits, unchanged next-run times, repeat execution, and shutdown rejection.
+The socket test additionally checks CLI parsing, long names, and daemon errors.
+
+Validation for manual runs: the CMake build, scheduler tests, and CLI argument
+checks passed. End-to-end socket testing could not run because the authoring
+environment rejects Unix socket creation with Operation not permitted.

@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -28,15 +29,17 @@ namespace
         bool listTasks = false;
         bool killAll = false;
         bool daemon = false;
+        std::optional<std::string> runTask;
     };
 
     void printHelp()
     {
-        std::cout << "Usage: chored [--daemon | --list-active | --kill-all] [options]\n"
+        std::cout << "Usage: chored [--daemon | --list | --list-active | --kill-all | --run TASK] [options]\n"
                   << "  --daemon            Run scheduler in foreground (default)\n"
                   << "  --list-active       Query the running daemon and exit\n"
                   << "  --list              Query the configured Tasks and exit\n"
                   << "  --kill-all          Cancel running tasks and clear queued tasks\n"
+                  << "  --run TASK          Queue a configured task immediately\n"
                   << "  --config PATH       TOML configuration path (daemon only)\n"
                   << "  --socket PATH       Absolute control socket path\n"
                   << "  --version           Print version and exit\n"
@@ -54,6 +57,20 @@ namespace
                 if (++index >= argc)
                     throw std::invalid_argument("Missing value after " + arg);
                 (arg == "--config" ? arguments.configPath : arguments.socketPath) = argv[index];
+            }
+            else if (arg == "--run")
+            {
+                if (arguments.runTask)
+                    throw std::invalid_argument("--run may only be specified once");
+                if (++index >= argc || std::string(argv[index]).empty() || std::string(argv[index]).rfind("--", 0) == 0)
+                    throw std::invalid_argument("Missing task name after --run");
+                arguments.runTask = argv[index];
+            }
+            else if (arg.rfind("--run=", 0) == 0)
+            {
+                if (arguments.runTask || arg.size() == 6)
+                    throw std::invalid_argument("--run requires one non-empty task name");
+                arguments.runTask = arg.substr(6);
             }
             else if (arg == "--daemon")
                 arguments.daemon = true;
@@ -76,8 +93,10 @@ namespace
             else
                 throw std::invalid_argument("Unknown argument: " + arg);
         }
-        if (static_cast<int>(arguments.daemon) + arguments.listActive + arguments.listTasks + arguments.killAll > 1)
-            throw std::invalid_argument("--daemon, --list-active and --kill-all are mutually exclusive");
+        if (static_cast<int>(arguments.daemon) + arguments.listActive + arguments.listTasks + arguments.killAll +
+                arguments.runTask.has_value() >
+            1)
+            throw std::invalid_argument("--daemon, --list, --list-active, --kill-all and --run are mutually exclusive");
         return arguments;
     }
 } // namespace
@@ -87,6 +106,11 @@ int main(int argc, char** argv)
     try
     {
         const auto args = parseArguments(argc, argv);
+        if (args.runTask)
+        {
+            std::cout << chored::runTask(args.socketPath, *args.runTask);
+            return 0;
+        }
         if (args.killAll)
         {
             std::cout << chored::killAll(args.socketPath);
