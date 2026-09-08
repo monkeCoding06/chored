@@ -25,15 +25,16 @@ namespace
         std::string configPath = defaultConfigPath();
         std::string socketPath = chored::defaultSocketPath();
         bool listActive = false;
+        bool killAll = false;
         bool daemon = false;
     };
 
     void printHelp()
     {
-        std::cout << "Usage: chored [--daemon | --list-active] [options]\n"
+        std::cout << "Usage: chored [--daemon | --list-active | --kill-all] [options]\n"
                   << "  --daemon            Run scheduler in foreground (default)\n"
                   << "  --list-active       Query the running daemon and exit\n"
-                  << "  --kill-all          Kill all Chored Tasks\n"
+                  << "  --kill-all          Cancel running tasks and clear queued tasks\n"
                   << "  --config PATH       TOML configuration path (daemon only)\n"
                   << "  --socket PATH       Absolute control socket path\n"
                   << "  --version           Print version and exit\n"
@@ -54,10 +55,10 @@ namespace
             }
             else if (arg == "--daemon")
                 arguments.daemon = true;
+            else if (arg == "--kill-all")
+                arguments.killAll = true;
             else if (arg == "--list-active")
                 arguments.listActive = true;
-            else if (arg =="--kill-all")
-                arguments.listActive = false;
             else if (arg == "--help")
             {
                 printHelp();
@@ -71,8 +72,8 @@ namespace
             else
                 throw std::invalid_argument("Unknown argument: " + arg);
         }
-        if (arguments.daemon && arguments.listActive)
-            throw std::invalid_argument("--daemon and --list-active are mutually exclusive");
+        if (static_cast<int>(arguments.daemon) + arguments.listActive + arguments.killAll > 1)
+            throw std::invalid_argument("--daemon, --list-active and --kill-all are mutually exclusive");
         return arguments;
     }
 } // namespace
@@ -82,6 +83,11 @@ int main(int argc, char** argv)
     try
     {
         const auto args = parseArguments(argc, argv);
+        if (args.killAll)
+        {
+            std::cout << chored::killAll(args.socketPath);
+            return 0;
+        }
         if (args.listActive)
         {
             std::cout << chored::listActive(args.socketPath);

@@ -27,6 +27,8 @@ namespace chored
 
         std::vector<ActiveTask> activeTasks() const;
 
+        void killAll(); // Cancel current work and clear queued occurrences.
+
         void start();       // Starts scheduler and workers; returns immediately.
         void requestStop(); // Requests shutdown and wakes all threads.
         void join();        // Waits for all threads to finish.

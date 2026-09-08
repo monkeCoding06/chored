@@ -102,6 +102,20 @@ namespace chored
         }
     }
 
+    void Scheduler::killAll()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        while (!readyTasks_.empty())
+        {
+            pendingTasks_.erase(readyTasks_.front().name);
+            readyTasks_.pop();
+        }
+        // The same queue lock covers dequeue + token capture, closing the
+        // gap between a worker taking a job and spawning its process.
+        for (const auto& runner : runners_)
+            runner->requestCancel();
+    }
+
     void Scheduler::requestStop()
     {
         {
@@ -263,6 +277,7 @@ namespace chored
             while (true)
             {
                 TaskConfig task;
+                std::uint64_t token = 0;
 
                 {
                     std::unique_lock<std::mutex> lock(mutex_);
@@ -281,6 +296,7 @@ namespace chored
 
                     task = std::move(readyTasks_.front());
                     readyTasks_.pop();
+                    token = runner.cancellationToken();
                 }
 
                 // No scheduler mutex is held while the command runs.
@@ -288,7 +304,7 @@ namespace chored
                 {
                     CHORED_LOG_INFO("Starting task: ", task.name);
 
-                    const auto result = runner.run(task);
+                    const auto result = runner.run(task, token);
 
                     if (result.terminationSignal != 0)
                     {

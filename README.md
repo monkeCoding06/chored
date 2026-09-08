@@ -151,8 +151,7 @@ directory, which can differ from your interactive terminal.
 ## Shutdown and current limits
 
 Direct SIGINT/SIGTERM requests stop scheduling and wait for the current command;
-active-task queries remain available during that wait. Task cancellation is not
-yet implemented in TaskRunner. Under the provided systemd unit, `KillMode=control-group`
+active-task queries remain available during that wait. Task cancellation is available through `--kill-all`. Under the provided systemd unit, `KillMode=control-group`
 sends SIGTERM to the daemon and its jobs; systemd forces termination after 15 seconds
 if necessary. Detached background processes in commands are not tracked as active
 after their shell exits. Idle conditions and persistent scheduling are not implemented.
@@ -175,3 +174,50 @@ the full socket integration test and live systemd activation could not be run th
 
 References: [Unix sockets](https://man7.org/linux/man-pages/man7/unix.7.html),
 [systemd execution settings](https://www.freedesktop.org/software/systemd/man/systemd.exec.html).
+
+## Cancel current work
+
+```sh
+chored --kill-all --socket /run/chored/control.sock
+```
+
+Run this as the configured service account, as with `--list-active`. Direct
+instances use their default user socket unless `--socket` overrides it.
+`--kill-all`, `--daemon`, and `--list-active` are mutually exclusive.
+
+The daemon immediately acknowledges: `Cancellation requested; queued tasks cleared.`
+Running task process groups receive SIGTERM, then SIGKILL after a five-second
+grace period. Queued occurrences are discarded. The daemon stays alive and
+future scheduled occurrences remain enabled. Jobs becoming due after the request
+may start normally. Repeated requests also cancel newly started work, without
+extending an already cancelling job's grace period.
+
+Tasks remain listed and retain their worker slots through the grace period,
+even if their shell exits earlier. This keeps the leader PID reserved until the
+final group signal and avoids targeting a recycled PID/group. Descendants that
+explicitly create a new session or process group escape this group-based control.
+Ordinary child processes in the task's group are included.
+
+Workers check completion every 100 ms only while running jobs; cancellation wakes
+them immediately through a condition variable. Idle workers still sleep without
+polling. The acknowledgement means the request was accepted, not that every
+process has already exited. Kernel-blocked processes may take longer to exit.
+
+Verification:
+
+```sh
+cmake -S . -B build -DCHORED_SERVICE_USER="$(id -un)" -DCHORED_BUILD_TESTS=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+python3 tests/control_integration.py ./build/chored
+```
+
+The C++ tests cover pre-spawn cancellation, repeated requests, forced termination,
+leader exit, runner reuse, parallel execution, and clearing queued work. The
+socket integration test additionally checks the command against a running daemon.
+See [waitid/WNOWAIT](https://man7.org/linux/man-pages/man2/wait.2.html) for the
+unreaped-child behavior used during cancellation.
+
+Validation for `--kill-all`: CMake build, runner cancellation tests, and scheduler
+queue/concurrency tests passed. Unix socket communication remains unverified in
+the authoring environment because AF_UNIX creation is prohibited.

@@ -87,7 +87,7 @@ namespace chored
         return base + "/chored/control.sock";
     }
 
-    ControlServer::ControlServer(std::string socketPath, const Scheduler& scheduler)
+    ControlServer::ControlServer(std::string socketPath, Scheduler& scheduler)
         : path_(std::move(socketPath)), scheduler_(scheduler)
     {
     }
@@ -214,8 +214,16 @@ namespace chored
             const auto count = recv(client.value, buffer, sizeof(buffer), MSG_TRUNC);
             try
             {
-                const bool valid = count == 12 && std::memcmp(buffer, "LIST_ACTIVE\n", 12) == 0;
-                const auto response = valid ? "OK\n" + snapshot(scheduler_) : std::string("ERROR\nUnknown request\n");
+                std::string response;
+                if (count == 12 && std::memcmp(buffer, "LIST_ACTIVE\n", 12) == 0)
+                    response = "OK\n" + snapshot(scheduler_);
+                else if (count == 9 && std::memcmp(buffer, "KILL_ALL\n", 9) == 0)
+                {
+                    scheduler_.killAll();
+                    response = "OK\nCancellation requested; queued tasks cleared.\n";
+                }
+                else
+                    response = "ERROR\nUnknown request\n";
                 send(client.value, response.data(), response.size(), MSG_NOSIGNAL);
             }
             catch (...)
@@ -226,7 +234,7 @@ namespace chored
         }
     }
 
-    std::string listActive(const std::string& path)
+    static std::string requestControl(const std::string& path, const std::string& request)
     {
         const auto addr = address(path);
         Fd socketFd{socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0)};
@@ -240,8 +248,7 @@ namespace chored
             fail("Cannot verify daemon identity");
         if (peer.uid != getuid())
             throw std::runtime_error("Control socket belongs to another user");
-        constexpr char request[] = "LIST_ACTIVE\n";
-        if (send(socketFd.value, request, sizeof(request) - 1, MSG_NOSIGNAL) != sizeof(request) - 1)
+        if (send(socketFd.value, request.data(), request.size(), MSG_NOSIGNAL) != static_cast<ssize_t>(request.size()))
             fail("Cannot send control request");
         pollfd reply{socketFd.value, POLLIN, 0};
         int result;
@@ -262,5 +269,13 @@ namespace chored
         if (response.rfind("OK\n", 0) != 0)
             throw std::runtime_error("Invalid or unsuccessful daemon response");
         return response.substr(3);
+    }
+    std::string listActive(const std::string& path)
+    {
+        return requestControl(path, "LIST_ACTIVE\n");
+    }
+    std::string killAll(const std::string& path)
+    {
+        return requestControl(path, "KILL_ALL\n");
     }
 } // namespace chored

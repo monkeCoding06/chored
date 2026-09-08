@@ -5,37 +5,38 @@
 
 namespace chored
 {
-std::string defaultSocketPath();
+    std::string defaultSocketPath();
 
-std::string listActive(const std::string &socketPath);
+    std::string killAll(const std::string& socketPath);
+    std::string listActive(const std::string& socketPath);
 
-class ControlServer
-{
-public:
-  ControlServer(std::string socketPath, const Scheduler &scheduler);
+    class ControlServer
+    {
+      public:
+        ControlServer(std::string socketPath, Scheduler& scheduler);
 
-  ~ControlServer();
+        ~ControlServer();
 
-  ControlServer(const ControlServer &) = delete;
+        ControlServer(const ControlServer&) = delete;
 
-  ControlServer &operator=(const ControlServer &) = delete;
+        ControlServer& operator=(const ControlServer&) = delete;
 
-  void start();
+        void start();
 
-  void stop();
+        void stop();
 
-private:
-  void loop() noexcept;
+      private:
+        void loop() noexcept;
 
-  void cleanup() noexcept;
+        void cleanup() noexcept;
 
-  std::string path_;
-  const Scheduler &scheduler_;
-  int listener_{-1};
-  int lock_{-1};
-  int wake_[2]{-1, -1};
-  bool bound_{false};
-  bool started_{false};
-  std::thread thread_;
-};
+        std::string path_;
+        Scheduler& scheduler_;
+        int listener_{-1};
+        int lock_{-1};
+        int wake_[2]{-1, -1};
+        bool bound_{false};
+        bool started_{false};
+        std::thread thread_;
+    };
 } // namespace chored
