@@ -26,6 +26,7 @@ namespace chored
         Scheduler& operator=(const Scheduler&) = delete;
 
         std::vector<ActiveTask> activeTasks() const;
+        std::vector<ConfiguredTask> configuredTasks() const;
 
         void killAll(); // Cancel current work and clear queued occurrences.
 
@@ -56,7 +57,7 @@ namespace chored
         std::thread schedulerThread_;
         std::vector<std::thread> workerThreads_;
 
-        std::mutex mutex_;
+        mutable std::mutex mutex_;
         std::condition_variable scheduleChanged_;
         std::condition_variable workAvailable_;
 

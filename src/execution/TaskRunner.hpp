@@ -24,6 +24,12 @@ namespace chored
         std::chrono::steady_clock::time_point started;
     };
 
+    struct ConfiguredTask
+    {
+        std::string name;
+        std::optional<std::chrono::system_clock::time_point> scheduledStart;
+    };
+
     class TaskRunner
     {
       public:

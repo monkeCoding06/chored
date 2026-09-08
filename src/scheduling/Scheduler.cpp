@@ -60,6 +60,24 @@ namespace chored
         return result;
     }
 
+    std::vector<ConfiguredTask> Scheduler::configuredTasks() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        std::vector<ConfiguredTask> result;
+        result.reserve(tasks_.size());
+
+        for (const auto& scheduled : tasks_)
+        {
+            result.push_back({
+                scheduled.task.name,
+                scheduled.nextRun
+            });
+        }
+
+        return result;
+    }
+
     Scheduler::~Scheduler()
     {
         requestStop();

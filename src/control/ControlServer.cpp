@@ -14,6 +14,7 @@
 #include <sys/un.h>
 #include <system_error>
 #include <unistd.h>
+#include <ctime>
 
 namespace chored
 {
@@ -78,7 +79,45 @@ namespace chored
             }
             return out.str();
         }
-    } // namespace
+
+        std::string taskSnapshot(const Scheduler& scheduler)
+        {
+            const auto tasks = scheduler.configuredTasks();
+            if (tasks.empty())
+            {
+                return "no configured tasks.\n";
+            }
+            std::ostringstream out;
+            out << "TASK\tNEXT RUN\n";
+
+            for (const auto& task : tasks)
+            {
+                out << std::quoted(printable(task.name)) << '\t';
+
+                if (task.scheduledStart)
+                {
+                    const auto timestamp =
+                        std::chrono::system_clock::to_time_t(*task.scheduledStart);
+
+                    std::tm localTime{};
+                    if (localtime_r(&timestamp, &localTime) == nullptr)
+                    {
+                        throw std::runtime_error("Cannot format scheduled start time");
+                    }
+
+                    out << std::put_time(&localTime, "%Y-%m-%d %H:%M:%S %Z");
+                }
+                else
+                {
+                    out << "manual";
+                }
+
+                out << '\n';
+            }
+
+            return out.str();
+        }
+    } // namespace chored
 
     std::string defaultSocketPath()
     {
@@ -215,15 +254,25 @@ namespace chored
             try
             {
                 std::string response;
+
                 if (count == 12 && std::memcmp(buffer, "LIST_ACTIVE\n", 12) == 0)
+                {
                     response = "OK\n" + snapshot(scheduler_);
+                }
                 else if (count == 9 && std::memcmp(buffer, "KILL_ALL\n", 9) == 0)
                 {
                     scheduler_.killAll();
                     response = "OK\nCancellation requested; queued tasks cleared.\n";
                 }
+                else if (count == 11 && std::memcmp(buffer, "LIST_TASKS\n", 11) == 0)
+                {
+                    response = "OK\n" + taskSnapshot(scheduler_);
+                }
                 else
+                {
                     response = "ERROR\nUnknown request\n";
+                }
+
                 send(client.value, response.data(), response.size(), MSG_NOSIGNAL);
             }
             catch (...)
@@ -277,5 +326,9 @@ namespace chored
     std::string killAll(const std::string& path)
     {
         return requestControl(path, "KILL_ALL\n");
+    }
+    std::string listTasks(const std::string& path)
+    {
+        return requestControl(path, "LIST_TASKS\n");
     }
 } // namespace chored

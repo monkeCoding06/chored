@@ -25,6 +25,7 @@ namespace
         std::string configPath = defaultConfigPath();
         std::string socketPath = chored::defaultSocketPath();
         bool listActive = false;
+        bool listTasks = false;
         bool killAll = false;
         bool daemon = false;
     };
@@ -34,6 +35,7 @@ namespace
         std::cout << "Usage: chored [--daemon | --list-active | --kill-all] [options]\n"
                   << "  --daemon            Run scheduler in foreground (default)\n"
                   << "  --list-active       Query the running daemon and exit\n"
+                  << "  --list              Query the configured Tasks and exit\n"
                   << "  --kill-all          Cancel running tasks and clear queued tasks\n"
                   << "  --config PATH       TOML configuration path (daemon only)\n"
                   << "  --socket PATH       Absolute control socket path\n"
@@ -59,6 +61,8 @@ namespace
                 arguments.killAll = true;
             else if (arg == "--list-active")
                 arguments.listActive = true;
+            else if (arg == "--list")
+                arguments.listTasks = true;
             else if (arg == "--help")
             {
                 printHelp();
@@ -72,7 +76,7 @@ namespace
             else
                 throw std::invalid_argument("Unknown argument: " + arg);
         }
-        if (static_cast<int>(arguments.daemon) + arguments.listActive + arguments.killAll > 1)
+        if (static_cast<int>(arguments.daemon) + arguments.listActive + arguments.listTasks + arguments.killAll > 1)
             throw std::invalid_argument("--daemon, --list-active and --kill-all are mutually exclusive");
         return arguments;
     }
@@ -93,6 +97,12 @@ int main(int argc, char** argv)
             std::cout << chored::listActive(args.socketPath);
             return 0;
         }
+        if (args.listTasks)
+        {
+            std::cout << chored::listTasks(args.socketPath);
+            return 0;
+        }
+
         const auto config = chored::Config::load(args.configPath);
         // Block signals before any threads are created.
         chored::SignalHandler signals;
