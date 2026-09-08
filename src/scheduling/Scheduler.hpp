@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <set>
@@ -13,55 +14,53 @@
 
 namespace chored
 {
-class Scheduler
-{
-public:
-  explicit Scheduler(std::vector<TaskConfig> tasks);
+    class Scheduler
+    {
+      public:
+        explicit Scheduler(std::vector<TaskConfig> tasks, std::size_t maxConcurrentTasks = 1);
 
-  ~Scheduler();
+        ~Scheduler();
 
-  Scheduler(const Scheduler &) = delete;
+        Scheduler(const Scheduler&) = delete;
 
-  Scheduler &operator=(const Scheduler &) = delete;
+        Scheduler& operator=(const Scheduler&) = delete;
 
-  std::optional<ActiveTask> activeTask() const
-  {
-    return runner_.activeTask();
-  }
+        std::vector<ActiveTask> activeTasks() const;
 
-  void start();       // Starts scheduler and worker; returns immediately.
-  void requestStop(); // Requests shutdown and wakes both threads.
-  void join();        // Waits for both threads to finish.
+        void start();       // Starts scheduler and workers; returns immediately.
+        void requestStop(); // Requests shutdown and wakes all threads.
+        void join();        // Waits for all threads to finish.
 
-private:
-  using Clock = std::chrono::system_clock;
+      private:
+        using Clock = std::chrono::system_clock;
 
-  struct ScheduledTask
-  {
-    TaskConfig task;
-    Clock::time_point nextRun;
-  };
+        struct ScheduledTask
+        {
+            TaskConfig task;
+            Clock::time_point nextRun;
+        };
 
-  void schedulerLoop();
+        void schedulerLoop();
 
-  void workerLoop();
+        void workerLoop(TaskRunner& runner);
 
-  Clock::time_point calculateNextRun(const TaskConfig &task, Clock::time_point now) const;
+        Clock::time_point calculateNextRun(const TaskConfig& task, Clock::time_point now) const;
 
-  std::vector<ScheduledTask> tasks_;
-  std::queue<TaskConfig> readyTasks_;
-  TaskRunner runner_;
+        std::vector<ScheduledTask> tasks_;
+        std::queue<TaskConfig> readyTasks_;
+        // Constructed before start; one independent runner per worker.
+        std::vector<std::unique_ptr<TaskRunner>> runners_;
 
-  std::thread schedulerThread_;
-  std::thread workerThread_;
+        std::thread schedulerThread_;
+        std::vector<std::thread> workerThreads_;
 
-  std::mutex mutex_;
-  std::condition_variable scheduleChanged_;
-  std::condition_variable workAvailable_;
+        std::mutex mutex_;
+        std::condition_variable scheduleChanged_;
+        std::condition_variable workAvailable_;
 
-  bool started_{false};                // Protected by mutex_.
-  std::set<std::string> pendingTasks_; // Queued or running task names.
+        bool started_{false};                // Protected by mutex_.
+        std::set<std::string> pendingTasks_; // Queued or running task names.
 
-  bool stopRequested_{false}; // Protected by mutex_.
-};
+        bool stopRequested_{false}; // Protected by mutex_.
+    };
 } // namespace chored
