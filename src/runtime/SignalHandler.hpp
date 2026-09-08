@@ -4,21 +4,21 @@
 
 namespace chored
 {
-class SignalHandler
-{
-public:
-  SignalHandler();
+    class SignalHandler
+    {
+      public:
+        SignalHandler();
 
-  ~SignalHandler();
+        ~SignalHandler();
 
-  SignalHandler(const SignalHandler &) = delete;
+        SignalHandler(const SignalHandler&) = delete;
 
-  SignalHandler &operator=(const SignalHandler &) = delete;
+        SignalHandler& operator=(const SignalHandler&) = delete;
 
-  int wait() const;
+        int wait() const;
 
-private:
-  sigset_t signalSet_{};
-  sigset_t previousSet_{};
-};
+      private:
+        sigset_t signalSet_{};
+        sigset_t previousSet_{};
+    };
 } // namespace chored

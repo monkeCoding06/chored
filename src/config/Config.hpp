@@ -6,16 +6,16 @@
 
 namespace chored
 {
-class Config
-{
-public:
-  static Config load(const std::string &tomlPath);
+    class Config
+    {
+      public:
+        static Config load(const std::string& tomlPath);
 
-  const AppConfig &values() const noexcept;
+        const AppConfig& values() const noexcept;
 
-private:
-  explicit Config(AppConfig values);
+      private:
+        explicit Config(AppConfig values);
 
-  AppConfig values_;
-};
+        AppConfig values_;
+    };
 } // namespace chored
