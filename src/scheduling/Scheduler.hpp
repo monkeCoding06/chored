@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -28,6 +29,8 @@ namespace chored
         std::vector<ActiveTask> activeTasks() const;
         std::vector<ConfiguredTask> configuredTasks() const;
 
+        void runTask(const std::string& name);
+
         void killAll(); // Cancel current work and clear queued occurrences.
 
         void start();       // Starts scheduler and workers; returns immediately.
@@ -49,6 +52,7 @@ namespace chored
 
         Clock::time_point calculateNextRun(const TaskConfig& task, Clock::time_point now) const;
 
+        std::map<std::string, TaskConfig> configured_;
         std::vector<ScheduledTask> tasks_;
         std::queue<TaskConfig> readyTasks_;
         // Constructed before start; one independent runner per worker.

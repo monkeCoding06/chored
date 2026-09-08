@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <fcntl.h>
 #include <filesystem>
 #include <iomanip>
@@ -14,7 +15,6 @@
 #include <sys/un.h>
 #include <system_error>
 #include <unistd.h>
-#include <ctime>
 
 namespace chored
 {
@@ -96,8 +96,7 @@ namespace chored
 
                 if (task.scheduledStart)
                 {
-                    const auto timestamp =
-                        std::chrono::system_clock::to_time_t(*task.scheduledStart);
+                    const auto timestamp = std::chrono::system_clock::to_time_t(*task.scheduledStart);
 
                     std::tm localTime{};
                     if (localtime_r(&timestamp, &localTime) == nullptr)
@@ -117,13 +116,11 @@ namespace chored
 
             return out.str();
         }
-    } // namespace chored
+    } // namespace
 
     std::string defaultSocketPath()
     {
-        const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-        const std::string base = runtime && *runtime ? runtime : "/run/user/" + std::to_string(getuid());
-        return base + "/chored/control.sock";
+        return "/run/chored/control.sock";
     }
 
     ControlServer::ControlServer(std::string socketPath, Scheduler& scheduler)
@@ -249,7 +246,7 @@ namespace chored
                 return;
             if (result <= 0 || !(request[1].revents & POLLIN))
                 continue;
-            char buffer[64];
+            char buffer[65536];
             const auto count = recv(client.value, buffer, sizeof(buffer), MSG_TRUNC);
             try
             {
@@ -268,6 +265,13 @@ namespace chored
                 {
                     response = "OK\n" + taskSnapshot(scheduler_);
                 }
+                else if (count > 4 && count <= static_cast<ssize_t>(sizeof(buffer)) &&
+                         std::memcmp(buffer, "RUN\n", 4) == 0)
+                {
+                    // The rest of this packet is the exact task name, not shell code.
+                    scheduler_.runTask(std::string(buffer + 4, static_cast<std::size_t>(count) - 4));
+                    response = "OK\nTask queued.\n";
+                }
                 else
                 {
                     response = "ERROR\nUnknown request\n";
@@ -275,9 +279,20 @@ namespace chored
 
                 send(client.value, response.data(), response.size(), MSG_NOSIGNAL);
             }
+            catch (const std::exception& error)
+            {
+                try
+                {
+                    const auto response = "ERROR\n" + printable(error.what()) + "\n";
+                    send(client.value, response.data(), response.size(), MSG_NOSIGNAL);
+                }
+                catch (...)
+                {
+                }
+            }
             catch (...)
             {
-                constexpr char error[] = "ERROR\nCannot read active tasks\n";
+                constexpr char error[] = "ERROR\nCannot process control request\n";
                 send(client.value, error, sizeof(error) - 1, MSG_NOSIGNAL);
             }
         }
@@ -315,6 +330,13 @@ namespace chored
         if (count <= 0 || count > static_cast<ssize_t>(sizeof(buffer)))
             throw std::runtime_error("Missing or oversized daemon response");
         std::string response(buffer, static_cast<std::size_t>(count));
+        if (response.rfind("ERROR\n", 0) == 0)
+        {
+            auto message = response.substr(6);
+            if (!message.empty() && message.back() == '\n')
+                message.pop_back();
+            throw std::runtime_error(printable(message));
+        }
         if (response.rfind("OK\n", 0) != 0)
             throw std::runtime_error("Invalid or unsuccessful daemon response");
         return response.substr(3);
@@ -330,5 +352,11 @@ namespace chored
     std::string listTasks(const std::string& path)
     {
         return requestControl(path, "LIST_TASKS\n");
+    }
+    std::string runTask(const std::string& path, const std::string& name)
+    {
+        if (name.empty() || name.size() > 65532)
+            throw std::invalid_argument("Task name must contain 1 to 65532 bytes");
+        return requestControl(path, "RUN\n" + name);
     }
 } // namespace chored

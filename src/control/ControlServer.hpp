@@ -9,6 +9,7 @@ namespace chored
 
     std::string killAll(const std::string& socketPath);
     std::string listActive(const std::string& socketPath);
+    std::string runTask(const std::string& socketPath, const std::string& name);
     std::string listTasks(const std::string& socketPath);
 
     class ControlServer

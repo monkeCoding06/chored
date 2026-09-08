@@ -1,19 +1,10 @@
 [scheduler]
 max_concurrent_tasks = 4
 
+[tasks.example]
+command = "echo Hello from chored"
+at = "22:00"
 
 [tasks.long_test]
-command = "echo 'Starting'; sleep 120; echo 'Finished'"
-at = "08:20"
-
-[tasks.long_test2]
-command = "echo 'Starting'; sleep 120; echo 'Finished'"
-at = "08:20"
-
-[tasks.long_test3]
-command = "echo 'Starting'; sleep 120; echo 'Finished'"
-at = "08:20"
-
-[tasks.long_test4]
 command = "echo 'Starting'; sleep 120; echo 'Finished'"
 at = "08:20"

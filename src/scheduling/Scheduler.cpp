@@ -31,6 +31,8 @@ namespace chored
                 throw std::invalid_argument("Duplicate task name: " + task.name);
             }
 
+            configured_.emplace(task.name, task);
+
             if (!task.at)
             {
                 continue;
@@ -65,17 +67,45 @@ namespace chored
         std::lock_guard<std::mutex> lock(mutex_);
 
         std::vector<ConfiguredTask> result;
-        result.reserve(tasks_.size());
-
+        result.reserve(configured_.size());
+        for (const auto& [name, task] : configured_)
+        {
+            result.push_back({name, std::nullopt});
+        }
         for (const auto& scheduled : tasks_)
         {
-            result.push_back({
-                scheduled.task.name,
-                scheduled.nextRun
-            });
+            const auto row = std::lower_bound(result.begin(), result.end(), scheduled.task.name,
+                [](const ConfiguredTask& task, const std::string& name)
+                {
+                    return task.name < name;
+                });
+            row->scheduledStart = scheduled.nextRun;
         }
 
         return result;
+    }
+
+    void Scheduler::runTask(const std::string& name)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!started_ || stopRequested_)
+            throw std::runtime_error("Scheduler is not accepting tasks");
+        const auto task = configured_.find(name);
+        if (task == configured_.end())
+            throw std::invalid_argument( "Unknown task: [" + name + "], bytes=" + std::to_string(name.size()));
+        const auto inserted = pendingTasks_.insert(name);
+        if (!inserted.second)
+            throw std::runtime_error("Task is already queued or running");
+        try
+        {
+            readyTasks_.push(task->second);
+        }
+        catch (...)
+        {
+            pendingTasks_.erase(inserted.first);
+            throw;
+        }
+        workAvailable_.notify_one();
     }
 
     Scheduler::~Scheduler()
