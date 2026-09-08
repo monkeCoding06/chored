@@ -89,13 +89,19 @@ namespace chored
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!started_ || stopRequested_)
+        {
             throw std::runtime_error("Scheduler is not accepting tasks");
+        }
         const auto task = configured_.find(name);
         if (task == configured_.end())
+        {
             throw std::invalid_argument( "Unknown task: [" + name + "], bytes=" + std::to_string(name.size()));
+        }
         const auto inserted = pendingTasks_.insert(name);
         if (!inserted.second)
+        {
             throw std::runtime_error("Task is already queued or running");
+        }
         try
         {
             readyTasks_.push(task->second);

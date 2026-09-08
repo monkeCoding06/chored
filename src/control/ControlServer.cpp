@@ -116,7 +116,7 @@ namespace chored
 
             return out.str();
         }
-    } // namespace
+    } // namespace chored
 
     std::string defaultSocketPath()
     {
@@ -246,7 +246,7 @@ namespace chored
                 return;
             if (result <= 0 || !(request[1].revents & POLLIN))
                 continue;
-            char buffer[65536];
+            char buffer[65536]; //64 KiB
             const auto count = recv(client.value, buffer, sizeof(buffer), MSG_TRUNC);
             try
             {
@@ -303,42 +303,67 @@ namespace chored
         const auto addr = address(path);
         Fd socketFd{socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0)};
         if (socketFd.value < 0)
+        {
             fail("Cannot create client socket");
+        }
         if (connect(socketFd.value, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0)
+        {
             fail("Cannot connect to chored; start the daemon and check --socket");
+        }
+
         ucred peer{};
         socklen_t size = sizeof(peer);
         if (getsockopt(socketFd.value, SOL_SOCKET, SO_PEERCRED, &peer, &size) != 0)
+        {
             fail("Cannot verify daemon identity");
+        }
         if (peer.uid != getuid())
+        {
             throw std::runtime_error("Control socket belongs to another user");
+        }
         if (send(socketFd.value, request.data(), request.size(), MSG_NOSIGNAL) != static_cast<ssize_t>(request.size()))
+        {
             fail("Cannot send control request");
+        }
+
         pollfd reply{socketFd.value, POLLIN, 0};
         int result;
         do
         {
             result = poll(&reply, 1, 3000);
         } while (result < 0 && errno == EINTR);
+
         if (result < 0)
+        {
             fail("Cannot wait for daemon response");
+        }
         if (result == 0)
+        {
             throw std::runtime_error("Timed out waiting for chored");
+        }
+
         // Up to 64 rows with escaped, length-limited names.
         char buffer[65536];
         const auto count = recv(socketFd.value, buffer, sizeof(buffer), MSG_TRUNC);
+
         if (count <= 0 || count > static_cast<ssize_t>(sizeof(buffer)))
+        {
             throw std::runtime_error("Missing or oversized daemon response");
+        }
         std::string response(buffer, static_cast<std::size_t>(count));
         if (response.rfind("ERROR\n", 0) == 0)
         {
             auto message = response.substr(6);
             if (!message.empty() && message.back() == '\n')
+            {
                 message.pop_back();
+            }
             throw std::runtime_error(printable(message));
         }
         if (response.rfind("OK\n", 0) != 0)
+        {
             throw std::runtime_error("Invalid or unsuccessful daemon response");
+        }
         return response.substr(3);
     }
     std::string listActive(const std::string& path)
