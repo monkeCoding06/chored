@@ -1,0 +1,400 @@
+name: Chored CI
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*.*.*"
+
+  workflow_dispatch:
+    inputs:
+      build_packages:
+        description: Build RPM and DEB artifacts for the selected branch
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: chored-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+permissions:
+  contents: read
+
+env:
+  CHORED_SERVICE_USER: ${{ vars.CHORED_SERVICE_USER }}
+
+jobs:
+  build:
+    name: Build and Unit Tests
+    runs-on: [self-hosted, Linux, X64]
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install build dependencies
+        env:
+          SUDO_PASSWORD: ${{ secrets.RUNNER_SUDO_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$SUDO_PASSWORD" ]]; then
+            echo "::error::RUNNER_SUDO_PASSWORD is not configured"
+            exit 1
+          fi
+
+          printf '%s\n' "$SUDO_PASSWORD" |
+            sudo -S -p '' -v
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            git \
+            python3
+
+      - name: Verify build tools
+        run: |
+          set -euo pipefail
+
+          required_tools=(
+            cmake
+            ninja
+            gcc
+            g++
+            git
+            pkg-config
+          )
+
+          for tool in "${required_tools[@]}"; do
+            executable="$(command -v "$tool" || true)"
+
+            if [[ -z "$executable" ]]; then
+              echo "::error::$tool is not available"
+              exit 1
+            fi
+
+            echo "$tool: $executable"
+          done
+
+          git --version
+          cmake --version
+          ninja --version
+          pkg-config --version
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCHORED_SERVICE_USER="${CHORED_SERVICE_USER:?Set repository variable CHORED_SERVICE_USER}" \
+            -DCHORED_BUILD_TESTS=ON
+
+      - name: Build application
+        run: |
+          cmake --build build \
+            --parallel "$(nproc)"
+
+  clang-tidy:
+    name: Clang-Tidy
+    needs: build
+    runs-on: [self-hosted, Linux, X64]
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install analysis dependencies
+        env:
+          SUDO_PASSWORD: ${{ secrets.RUNNER_SUDO_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$SUDO_PASSWORD" ]]; then
+            echo "::error::RUNNER_SUDO_PASSWORD is not configured"
+            exit 1
+          fi
+
+          printf '%s\n' "$SUDO_PASSWORD" |
+            sudo -S -p '' -v
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            git \
+            clang-tidy \
+            python3
+
+      - name: Verify analysis tools
+        run: |
+          set -euo pipefail
+
+          required_tools=(
+            cmake
+            ninja
+            gcc
+            g++
+            git
+            pkg-config
+            clang-tidy
+            run-clang-tidy
+          )
+
+          for tool in "${required_tools[@]}"; do
+            executable="$(command -v "$tool" || true)"
+
+            if [[ -z "$executable" ]]; then
+              echo "::error::$tool is not available"
+              exit 1
+            fi
+
+            echo "$tool: $executable"
+          done
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure compile database
+        run: |
+          cmake -S . -B build-tidy -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCHORED_SERVICE_USER="${CHORED_SERVICE_USER:?Set repository variable CHORED_SERVICE_USER}" \
+            -DCHORED_BUILD_TESTS=ON
+
+      - name: Run clang-tidy
+        run: |
+          cmake --build build-tidy --parallel "$(nproc)"
+          run-clang-tidy \
+            -p build-tidy \
+            -j "$(nproc)" \
+            -header-filter='^.*/src/.*' \
+            -warnings-as-errors='*' \
+            -quiet \
+            '.*/src/.*\.cpp$'
+
+  package:
+    name: Build RPM and DEB Packages
+    needs:
+      - build
+      - clang-tidy
+
+    if: >-
+      github.ref_type == 'tag' ||
+      (github.event_name == 'push' && github.ref_name == 'main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_packages)
+
+    runs-on: [self-hosted, Linux, X64]
+
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install packaging dependencies
+        env:
+          SUDO_PASSWORD: ${{ secrets.RUNNER_SUDO_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$SUDO_PASSWORD" ]]; then
+            echo "::error::RUNNER_SUDO_PASSWORD is not configured"
+            exit 1
+          fi
+
+          printf '%s\n' "$SUDO_PASSWORD" |
+            sudo -S -p '' -v
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            git \
+            rpm \
+            dpkg-dev \
+            python3
+
+      - name: Verify packaging tools
+        run: |
+          set -euo pipefail
+
+          required_tools=(
+            cmake
+            cpack
+            ninja
+            gcc
+            g++
+            git
+            pkg-config
+            rpmbuild
+            dpkg-deb
+          )
+
+          for tool in "${required_tools[@]}"; do
+            executable="$(command -v "$tool" || true)"
+
+            if [[ -z "$executable" ]]; then
+              echo "::error::$tool is not available"
+              exit 1
+            fi
+
+            echo "$tool: $executable"
+          done
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare package metadata
+        id: package_metadata
+        run: |
+          set -euo pipefail
+
+          safe_ref="${GITHUB_REF_NAME//[^A-Za-z0-9._-]/_}"
+
+          project_version="$(
+            sed -nE \
+              's/^project\(chored VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' \
+              CMakeLists.txt
+          )"
+
+          if [[ -z "$project_version" ]]; then
+            echo "::error::Could not read the project version from CMakeLists.txt"
+            exit 1
+          fi
+
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Release tags must use the format v1.2.3"
+              exit 1
+            fi
+
+            tag_version="${GITHUB_REF_NAME#v}"
+
+            if [[ "$tag_version" != "$project_version" ]]; then
+              echo "::error::Tag version $tag_version does not match CMake project version $project_version"
+              exit 1
+            fi
+
+            channel="release"
+            package_release="1"
+          elif [[ "$GITHUB_REF_NAME" == "main" ]]; then
+            channel="development"
+            package_release="0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          else
+            channel="manual"
+            package_release="0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          fi
+
+          echo "ref=$safe_ref" >> "$GITHUB_OUTPUT"
+          echo "version=$project_version" >> "$GITHUB_OUTPUT"
+          echo "release=$package_release" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+          echo "Package channel: $channel"
+          echo "Package version: $project_version-$package_release"
+
+      - name: Configure package build
+        run: |
+          cmake -S . -B build-package -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCHORED_SERVICE_USER="${CHORED_SERVICE_USER:?Set repository variable CHORED_SERVICE_USER}" \
+            -DCHORED_BUILD_TESTS=OFF \
+            -DCPACK_RPM_PACKAGE_RELEASE="${{ steps.package_metadata.outputs.release }}" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE="${{ steps.package_metadata.outputs.release }}"
+
+      - name: Build application
+        run: |
+          cmake --build build-package \
+            --target chored \
+            --parallel "$(nproc)"
+
+      - name: Build RPM package
+        run: |
+          cpack \
+            --config build-package/CPackConfig.cmake \
+            -G RPM \
+            -B build-package/packages/rpm
+
+      - name: Build DEB package
+        run: |
+          cpack \
+            --config build-package/CPackConfig.cmake \
+            -G DEB \
+            -B build-package/packages/deb
+
+      - name: Create package checksums
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp build-package/packages/rpm/*.rpm dist/
+          cp build-package/packages/deb/*.deb dist/
+          cd dist
+          sha256sum *.rpm *.deb > SHA256SUMS
+
+      - name: Deploy packages to runner server
+        env:
+          SUDO_PASSWORD: ${{ secrets.RUNNER_SUDO_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          printf '%s\n' "$SUDO_PASSWORD" |
+            sudo -S -p '' -v
+
+          sudo mkdir -p \
+            /srv/packages/deb \
+            /srv/packages/rpm
+
+          sudo install -m 0644 \
+            dist/*.deb \
+            /srv/packages/deb/
+
+          sudo install -m 0644 \
+            dist/*.rpm \
+            /srv/packages/rpm/
+
+          echo "Deployed DEB packages:"
+          ls -lh /srv/packages/deb
+
+          echo "Deployed RPM packages:"
+          ls -lh /srv/packages/rpm
+
+
+      - name: Upload packages as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chored-${{ steps.package_metadata.outputs.channel }}-${{ steps.package_metadata.outputs.ref }}-${{ github.run_number }}
+          path: |
+            dist/*.rpm
+            dist/*.deb
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
+        with:
+          name: chored ${{ github.ref_name }}
+          files: |
+            dist/*.rpm
+            dist/*.deb
+            dist/SHA256SUMS
+          generate_release_notes: true
+          fail_on_unmatched_files: true
