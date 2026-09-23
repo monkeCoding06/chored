@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        # Set ownership for the data directory
+        chown chored:chored /var/lib/chored
+        chmod 750 /var/lib/chored
+
+        # Set permissions for sudoers file
+        if [ -f /etc/sudoers.d/chored ]; then
+            chmod 0440 /etc/sudoers.d/chored
+        fi
+
+        # Reload systemd to recognize the service
+        if [ -d /run/systemd/system ]; then
+            systemctl --system daemon-reload >/dev/null || true
+        fi
+    ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+exit 0

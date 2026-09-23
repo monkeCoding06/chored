@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    install|upgrade)
+        if ! getent group chored >/dev/null; then
+            addgroup --system chored
+        fi
+        if ! getent passwd chored >/dev/null; then
+            adduser --system --ingroup chored --home /var/lib/chored --no-create-home \
+                --shell /usr/sbin/nologin --gecos "Chored task scheduler user" chored
+        fi
+    ;;
+    abort-upgrade)
+    ;;
+    *)
+        echo "preinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+exit 0

@@ -50,13 +50,8 @@ endif ()
 
 include(GNUInstallDirs)
 
-set(CHORED_SERVICE_USER "" CACHE STRING
-        "Existing Linux user that executes chored tasks")
-
-if (CHORED_SERVICE_USER STREQUAL "")
-    message(FATAL_ERROR
-            "Set -DCHORED_SERVICE_USER=<your Linux username>")
-endif ()
+set(CHORED_SERVICE_USER "chored" CACHE STRING
+        "Linux user that executes chored tasks")
 
 set(CHORED_SYSTEMD_UNIT_DIR "lib/systemd/system" CACHE STRING
         "Installation directory for the systemd system unit")
@@ -79,17 +74,43 @@ install(FILES config/chored.example.toml
         DESTINATION ${CMAKE_INSTALL_DATADIR}/chored
 )
 
+install(FILES packaging/chored.sudoers
+        DESTINATION /etc/sudoers.d
+        RENAME chored
+)
+
+install(DIRECTORY DESTINATION /var/lib/chored
+        DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+)
+
 set(CPACK_RPM_PACKAGE_ARCHITECTURE "${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
 
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
     "/usr/lib/systemd"
     "/usr/lib/systemd/system"
+    "/var/lib"
+    "/etc/sudoers.d"
 )
 
 set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_GENERATOR "RPM")
+set(CPACK_GENERATOR "RPM;DEB")
+
+# RPM specific settings
+set(CPACK_RPM_PRE_INSTALL_SCRIPT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/rpm/preinstall.sh")
+set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/rpm/postinstall.sh")
+set(CPACK_RPM_POST_UNINSTALL_SCRIPT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/rpm/postuninstall.sh")
+
+# DEB specific settings
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Junie <junie@jetbrains.com>") # Placeholder maintainer
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libstdc++6")
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/preinst"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/postinst"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/prerm"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/postrm"
+)
 
 set(CPACK_INSTALLED_DIRECTORIES "")
 set(CPACK_INSTALL_CMAKE_PROJECTS

@@ -1,0 +1,19 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    purge)
+        userdel chored 2>/dev/null || true
+        groupdel chored 2>/dev/null || true
+        rm -rf /var/lib/chored
+        rm -f /etc/sudoers.d/chored
+    ;;
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    ;;
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+exit 0
