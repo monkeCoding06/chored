@@ -387,9 +387,12 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: chored ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           files: |
             dist/*.rpm
             dist/*.deb
             dist/SHA256SUMS
           generate_release_notes: true
           fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACTIONS_CHORED }}
