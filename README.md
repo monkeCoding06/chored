@@ -10,8 +10,7 @@ Requires Linux, Git, CMake 3.20+, and a C++17 compiler. A fresh configure fetche
 pinned toml++ v3.4.0 from GitHub.
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-    -DCHORED_SERVICE_USER="$(id -un)"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
@@ -79,15 +78,13 @@ you intentionally want independent schedulers.
 
 ## Install a systemd system service
 
-Run these commands from your normal account. `CHORED_SERVICE_USER` must name an
-existing Linux account; that account executes the tasks even though the service
+Run these commands from your normal account. The `chored` service account executes the tasks even though the service
 is managed with `sudo systemctl`.
 
 ```sh
 cmake -S . -B build \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=/usr/local \
-    -DCHORED_SERVICE_USER="$(id -un)"
+    -DCMAKE_INSTALL_PREFIX=/usr/local
 cmake --build build -j
 sudo cmake --install build
 sudo install -d -m 755 /etc/chored
@@ -233,7 +230,7 @@ process has already exited. Kernel-blocked processes may take longer to exit.
 Verification:
 
 ```sh
-cmake -S . -B build -DCHORED_SERVICE_USER="$(id -un)" -DCHORED_BUILD_TESTS=ON
+cmake -S . -B build -DCHORED_BUILD_TESTS=ON
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 python3 tests/control_integration.py ./build/chored
@@ -286,7 +283,7 @@ exact name (up to 65532 bytes); it never interprets that name as shell code.
 Verification:
 
 ```sh
-cmake -S . -B build -DCHORED_SERVICE_USER="$(id -un)" -DCHORED_BUILD_TESTS=ON
+cmake -S . -B build -DCHORED_BUILD_TESTS=ON
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 python3 tests/manual_control.py ./build/chored

@@ -22,8 +22,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  CHORED_SERVICE_USER: ${{ vars.CHORED_SERVICE_USER }}
 
 jobs:
   build:
@@ -95,7 +93,6 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DCHORED_SERVICE_USER="${CHORED_SERVICE_USER:?Set repository variable CHORED_SERVICE_USER}" \
             -DCHORED_BUILD_TESTS=ON
 
       - name: Build application
@@ -171,7 +168,6 @@ jobs:
           cmake -S . -B build-tidy -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DCHORED_SERVICE_USER="${CHORED_SERVICE_USER:?Set repository variable CHORED_SERVICE_USER}" \
             -DCHORED_BUILD_TESTS=ON
 
       - name: Run clang-tidy
@@ -315,7 +311,6 @@ jobs:
           cmake -S . -B build-package -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DCHORED_SERVICE_USER="${CHORED_SERVICE_USER:?Set repository variable CHORED_SERVICE_USER}" \
             -DCHORED_BUILD_TESTS=OFF \
             -DCPACK_RPM_PACKAGE_RELEASE="${{ steps.package_metadata.outputs.release }}" \
             -DCPACK_DEBIAN_PACKAGE_RELEASE="${{ steps.package_metadata.outputs.release }}"
