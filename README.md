@@ -65,7 +65,7 @@ it is read.
 The default socket for the daemon and all client commands is
 `/run/chored/control.sock`. No `--socket` argument is needed for the installed
 system service. The socket is mode 0600 and both peers verify the other
-process's UID, so run client commands as the configured service account.
+process's UID, so run client commands as the configured service account or root.
 
 `--socket PATH` remains available for a separate development instance. Its
 containing directory must be owned by you and private (0700). Do not launch
@@ -128,8 +128,7 @@ sudo -u SERVICE_USER /usr/local/bin/chored --list-active
 ```
 
 Replace `SERVICE_USER` with the account selected at configure time. The current
-socket protocol requires both peers to have the same UID; running the query as
-root will not work against a non-root daemon.
+socket protocol allows both the same UID and root to connect to the daemon.
 
 The unit explicitly uses `/etc/chored/chored.toml` and `/run/chored/control.sock`.
 It runs in the service user's home directory and receives systemd's environment,

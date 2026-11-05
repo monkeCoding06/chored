@@ -234,7 +234,8 @@ namespace chored
                 continue;
             ucred peer{};
             socklen_t size = sizeof(peer);
-            if (getsockopt(client.value, SOL_SOCKET, SO_PEERCRED, &peer, &size) != 0 || peer.uid != getuid())
+            if (getsockopt(client.value, SOL_SOCKET, SO_PEERCRED, &peer, &size) != 0 ||
+                (peer.uid != getuid() && peer.uid != 0))
                 continue;
             pollfd request[]{{wake_[0], POLLIN, 0}, {client.value, POLLIN, 0}};
             int result;
@@ -317,7 +318,7 @@ namespace chored
         {
             fail("Cannot verify daemon identity");
         }
-        if (peer.uid != getuid())
+        if (peer.uid != getuid() && getuid() != 0)
         {
             throw std::runtime_error("Control socket belongs to another user");
         }
